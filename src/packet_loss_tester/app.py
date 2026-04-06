@@ -15,8 +15,8 @@ class PacketLossTesterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Win11 丢包测试工具")
-        self.geometry("1180x760")
-        self.minsize(1040, 680)
+        self.geometry("1320x860")
+        self.minsize(1120, 760)
         self.configure(bg="#f3f6fb")
         self.option_add("*Font", ("Segoe UI", 10))
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -56,7 +56,7 @@ class PacketLossTesterApp(tk.Tk):
         style.configure("Header.TLabel", background="#f3f6fb", foreground="#1a1f36", font=("Segoe UI Semibold", 19))
         style.configure("SubHeader.TLabel", background="#f3f6fb", foreground="#5a6475", font=("Segoe UI", 10))
         style.configure("CardTitle.TLabel", background="#ffffff", foreground="#5a6475", font=("Segoe UI Semibold", 10))
-        style.configure("Metric.TLabel", background="#ffffff", foreground="#111827", font=("Segoe UI Semibold", 17))
+        style.configure("Metric.TLabel", background="#ffffff", foreground="#111827", font=("Segoe UI Semibold", 16))
         style.configure("Status.TLabel", background="#f3f6fb", foreground="#334155", font=("Segoe UI", 10))
         style.configure("Accent.TButton", font=("Segoe UI Semibold", 10), padding=(16, 10), foreground="#ffffff", background="#0f6cbd")
         style.map(
@@ -90,22 +90,26 @@ class PacketLossTesterApp(tk.Tk):
 
         settings_frame = ttk.LabelFrame(controls_card, text="测试设置", padding=14)
         settings_frame.pack(fill="x")
-        settings_frame.columnconfigure(1, weight=1)
-        settings_frame.columnconfigure(3, weight=1)
-        settings_frame.columnconfigure(5, weight=1)
 
-        self._add_entry(settings_frame, "目标主机 / IP", self.target_var, 0, 0, 2)
-        self._add_entry(settings_frame, "次数", self.count_var, 0, 2)
-        self._add_entry(settings_frame, "间隔(秒)", self.interval_var, 0, 4)
-        self._add_entry(settings_frame, "超时(ms)", self.timeout_var, 1, 0)
-        self._add_entry(settings_frame, "负载字节", self.size_var, 1, 2)
+        settings_grid = ttk.Frame(settings_frame, style="Card.TFrame")
+        settings_grid.pack(fill="x")
+        for column in range(4):
+            settings_grid.columnconfigure(column, weight=1, uniform="settings")
 
+        self._add_entry(settings_grid, "目标主机 / IP", self.target_var, 0, 0, 2)
+        self.count_entry = self._add_entry(settings_grid, "次数", self.count_var, 0, 2)
+        self._add_entry(settings_grid, "间隔(秒)", self.interval_var, 0, 3)
+        self._add_entry(settings_grid, "超时(ms)", self.timeout_var, 1, 0)
+        self._add_entry(settings_grid, "负载字节", self.size_var, 1, 1)
+
+        continuous_frame = ttk.Frame(settings_grid, style="Card.TFrame", padding=(8, 22, 8, 0))
+        continuous_frame.grid(row=1, column=2, columnspan=2, sticky="nsew", padx=(0, 0), pady=(14, 0))
         ttk.Checkbutton(
-            settings_frame,
+            continuous_frame,
             text="持续测试直到手动停止",
             variable=self.continuous_var,
             command=self._toggle_count_state,
-        ).grid(row=1, column=4, sticky="w", padx=(0, 12), pady=(14, 0))
+        ).pack(anchor="w")
 
         button_bar = ttk.Frame(controls_card, style="Card.TFrame")
         button_bar.pack(fill="x", pady=(14, 0))
@@ -115,10 +119,15 @@ class PacketLossTesterApp(tk.Tk):
         self.stop_button.pack(side="left", padx=(10, 0))
         ttk.Button(button_bar, text="清空结果", style="Neutral.TButton", command=self._clear_results).pack(side="left", padx=(10, 0))
         ttk.Button(button_bar, text="导出 CSV", style="Neutral.TButton", command=self._export_csv).pack(side="left", padx=(10, 0))
-        ttk.Label(button_bar, textvariable=self.status_var, style="Status.TLabel").pack(side="right")
+
+        status_row = ttk.Frame(controls_card, style="Card.TFrame")
+        status_row.pack(fill="x", pady=(10, 0))
+        ttk.Label(status_row, textvariable=self.status_var, style="Status.TLabel", wraplength=1100, justify="left").pack(anchor="w")
 
         metrics = ttk.Frame(root, style="App.TFrame")
         metrics.pack(fill="x", pady=(0, 12))
+        for column in range(4):
+            metrics.columnconfigure(column, weight=1, uniform="metrics")
         metric_cards = [
             ("已发送", self.sent_var),
             ("已接收", self.received_var),
@@ -128,12 +137,14 @@ class PacketLossTesterApp(tk.Tk):
             ("最高延迟", self.worst_var),
             ("抖动", self.jitter_var),
         ]
-        for title, variable in metric_cards:
+        for index, (title, variable) in enumerate(metric_cards):
             card = ttk.Frame(metrics, style="Card.TFrame", padding=14)
-            card.pack(side="left", fill="both", expand=True, padx=(0, 10))
+            row, column = divmod(index, 4)
+            right_pad = 0 if column == 3 else 10
+            bottom_pad = 0 if row == (len(metric_cards) - 1) // 4 else 10
+            card.grid(row=row, column=column, sticky="nsew", padx=(0, right_pad), pady=(0, bottom_pad))
             ttk.Label(card, text=title, style="CardTitle.TLabel").pack(anchor="w")
             ttk.Label(card, textvariable=variable, style="Metric.TLabel").pack(anchor="w", pady=(8, 0))
-        metrics.winfo_children()[-1].pack_configure(padx=(0, 0))
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True)
@@ -177,18 +188,23 @@ class PacketLossTesterApp(tk.Tk):
         )
         self.raw_output.pack(fill="both", expand=True)
 
-        self.count_entry = next(
-            widget
-            for widget in settings_frame.winfo_children()
-            if isinstance(widget, ttk.Entry) and str(widget.cget("textvariable")) == str(self.count_var)
-        )
         self._toggle_count_state()
 
-    def _add_entry(self, parent: ttk.LabelFrame, label: str, variable: tk.StringVar, row: int, column: int, columnspan: int = 1) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=column, sticky="w", padx=(0, 10), pady=(0, 6))
-        entry = ttk.Entry(parent, textvariable=variable)
-        entry.grid(row=row + 1, column=column, columnspan=columnspan, sticky="ew", padx=(0, 16), pady=(0, 8))
-        parent.columnconfigure(column, weight=1)
+    def _add_entry(
+        self,
+        parent: ttk.Frame,
+        label: str,
+        variable: tk.StringVar,
+        row: int,
+        column: int,
+        columnspan: int = 1,
+    ) -> ttk.Entry:
+        field = ttk.Frame(parent, style="Card.TFrame")
+        field.grid(row=row, column=column, columnspan=columnspan, sticky="nsew", padx=(0, 16), pady=(0, 14))
+        ttk.Label(field, text=label).pack(anchor="w", pady=(0, 6))
+        entry = ttk.Entry(field, textvariable=variable)
+        entry.pack(fill="x")
+        return entry
 
     def _toggle_count_state(self) -> None:
         self.count_entry.configure(state="disabled" if self.continuous_var.get() else "normal")
