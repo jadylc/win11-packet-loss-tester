@@ -4,11 +4,11 @@ import locale
 import platform
 import re
 import shutil
-import statistics
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable
+
+from .probe_models import ProbeResult
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -42,51 +42,6 @@ class PingRequest:
     payload_size: int
 
 
-@dataclass(slots=True)
-class PingResult:
-    sequence: int
-    sampled_at: datetime
-    target: str
-    success: bool
-    latency_ms: float | None
-    status: str
-    raw_output: str
-
-
-@dataclass(slots=True)
-class ProbeStats:
-    sent: int = 0
-    received: int = 0
-    lost: int = 0
-    loss_rate: float = 0.0
-    min_latency_ms: float | None = None
-    max_latency_ms: float | None = None
-    avg_latency_ms: float | None = None
-    jitter_ms: float | None = None
-
-    @classmethod
-    def from_results(cls, results: Iterable[PingResult]) -> "ProbeStats":
-        items = list(results)
-        sent = len(items)
-        received = sum(1 for item in items if item.success)
-        lost = sent - received
-        latencies = [item.latency_ms for item in items if item.success and item.latency_ms is not None]
-        jitter = None
-        if len(latencies) >= 2:
-            diffs = [abs(current - previous) for previous, current in zip(latencies, latencies[1:])]
-            jitter = statistics.fmean(diffs)
-        return cls(
-            sent=sent,
-            received=received,
-            lost=lost,
-            loss_rate=(lost / sent * 100.0) if sent else 0.0,
-            min_latency_ms=min(latencies) if latencies else None,
-            max_latency_ms=max(latencies) if latencies else None,
-            avg_latency_ms=statistics.fmean(latencies) if latencies else None,
-            jitter_ms=jitter,
-        )
-
-
 def ensure_ping_available() -> None:
     if shutil.which("ping"):
         return
@@ -101,7 +56,7 @@ def build_ping_command(target: str, timeout_ms: int, payload_size: int) -> list[
     return ["ping", "-c", "1", "-W", str(timeout_seconds), "-s", str(payload_size), target]
 
 
-def parse_ping_output(output: str, returncode: int, sequence: int, target: str) -> PingResult:
+def parse_ping_output(output: str, returncode: int, sequence: int, target: str) -> ProbeResult:
     latency_match = _LATENCY_PATTERN.search(output)
     latency_ms = float(latency_match.group(1)) if latency_match else None
     success = latency_ms is not None
@@ -118,7 +73,7 @@ def parse_ping_output(output: str, returncode: int, sequence: int, target: str) 
             status = "成功"
             success = True
 
-    return PingResult(
+    return ProbeResult(
         sequence=sequence,
         sampled_at=datetime.now(),
         target=target,
@@ -126,10 +81,11 @@ def parse_ping_output(output: str, returncode: int, sequence: int, target: str) 
         latency_ms=latency_ms,
         status=status,
         raw_output=output.strip(),
+        transport="ICMP",
     )
 
 
-def run_single_ping(request: PingRequest, sequence: int) -> PingResult:
+def run_single_ping(request: PingRequest, sequence: int) -> ProbeResult:
     ensure_ping_available()
     command = build_ping_command(
         target=request.target,
@@ -152,7 +108,7 @@ def run_single_ping(request: PingRequest, sequence: int) -> PingResult:
         return parse_ping_output(output, completed.returncode, sequence, request.target)
     except subprocess.TimeoutExpired as exc:
         output = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-        return PingResult(
+        return ProbeResult(
             sequence=sequence,
             sampled_at=datetime.now(),
             target=request.target,
@@ -160,4 +116,5 @@ def run_single_ping(request: PingRequest, sequence: int) -> PingResult:
             latency_ms=None,
             status="执行超时",
             raw_output=output.strip() or "ping 命令执行超时。",
+            transport="ICMP",
         )
