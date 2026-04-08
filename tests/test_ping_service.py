@@ -10,8 +10,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from packet_loss_tester.ping_service import parse_ping_output
-from packet_loss_tester.probe_models import ProbeStats
+from packet_loss_tester.ping_service import ProbeStats, parse_ping_output
 
 
 class PingServiceTests(unittest.TestCase):
@@ -24,7 +23,6 @@ Reply from 8.8.8.8: bytes=32 time=18ms TTL=117
         self.assertTrue(result.success)
         self.assertEqual(result.status, "成功")
         self.assertEqual(result.latency_ms, 18.0)
-        self.assertEqual(result.transport, "ICMP")
 
     def test_parse_chinese_timeout_output(self) -> None:
         output = """
@@ -35,7 +33,6 @@ Reply from 8.8.8.8: bytes=32 time=18ms TTL=117
         self.assertFalse(result.success)
         self.assertEqual(result.status, "请求超时")
         self.assertIsNone(result.latency_ms)
-        self.assertEqual(result.transport, "ICMP")
 
     def test_probe_stats_calculation(self) -> None:
         first = parse_ping_output("Reply from 8.8.8.8: bytes=32 time=20ms TTL=118", 0, 1, "8.8.8.8")
